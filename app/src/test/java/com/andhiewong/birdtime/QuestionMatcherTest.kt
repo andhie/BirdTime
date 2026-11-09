@@ -61,8 +61,14 @@ class QuestionMatcherTest {
     }
 
     @Test
-    fun acceptsTwentyNormalizedCharacters() {
-        assertNotNull(matcher.match("abcdefghijklmnopqrst"))
+    fun acceptsAMatchingQuestionOfTwentyNormalizedCharacters() {
+        val question = Question("Will you fly with me?", "Nod.")
+        assertNotNull(QuestionMatcher(listOf(question)).match(question.remark))
+    }
+
+    @Test
+    fun rejectsUnrelatedTextEvenWhenItIsLongEnough() {
+        assertNull(matcher.match("ABCDEFGHIJKLMNOPQRST"))
     }
 
     @Test

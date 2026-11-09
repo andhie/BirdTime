@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
@@ -40,6 +41,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
+import androidx.lifecycle.LiveData
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.serialization.json.Json
@@ -48,13 +51,16 @@ import java.util.concurrent.Executors
 
 private val GAME_SCREEN = RectF(0.04f, 0.04f, 0.96f, 0.96f)
 private val QUESTION_ZONE = RectF(0.15f, 0.70f, 0.85f, 0.95f)
+private const val CAMERA_UNAVAILABLE = "Camera unavailable. Check camera access, close other camera apps, and retry."
 
 class MainActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var controller: LifecycleCameraController? = null
+    private var cameraState: LiveData<CameraState>? = null
     private var preview: PreviewView? = null
+    private var zoomRatio = 1f
     private var matcher: QuestionMatcher? = null
     private var requestId = 0
     private var timeout: Runnable? = null
@@ -80,6 +86,7 @@ class MainActivity : ComponentActivity() {
         permitted = hasCameraPermission()
         attempted = savedInstanceState?.getBoolean("attempted") ?: false
         permissionDenied = savedInstanceState?.getBoolean("permissionDenied") ?: false
+        zoomRatio = savedInstanceState?.getFloat("zoomRatio", 1f) ?: 1f
         message = savedInstanceState?.getString("message") ?: message
         savedInstanceState?.getString("remark")?.let { remark ->
             match = Match(
@@ -133,45 +140,25 @@ class MainActivity : ComponentActivity() {
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)) {
                             val stacked = maxHeight > maxWidth
-                            val previewWidth = if (stacked) maxWidth else (maxWidth - 16.dp) * 2 / 3
-                            val previewHeight = if (stacked) minOf(previewWidth, maxHeight / 2) else maxHeight
-                            val controlsWidth = if (stacked) maxWidth else maxWidth - previewWidth - 16.dp
-                            val controlsHeight = if (stacked) maxHeight - previewHeight - 16.dp else maxHeight
-                            FlowRow(
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                maxItemsInEachRow = if (stacked) 1 else 2,
-                            ) {
-                                Box(Modifier.width(previewWidth).height(previewHeight).clip(MaterialTheme.shapes.large)) {
+                            val previewPane: @Composable (Modifier) -> Unit = { modifier ->
+                                Box(modifier.clip(MaterialTheme.shapes.large)) {
                                     AndroidView(
                                         modifier = Modifier.fillMaxSize().semantics {
                                             contentDescription = "Camera preview. Align the game screen with the white guide and question with the green guide."
                                         },
                                         factory = { context ->
                                             PreviewView(context).also { view ->
+                                                preview?.let(::releasePreview)
                                                 preview = view
                                                 view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                                                 view.scaleType = PreviewView.ScaleType.FILL_CENTER
-                                                val camera = LifecycleCameraController(context)
-                                                camera.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
-                                                camera.imageAnalysisResolutionSelector = ResolutionSelector.Builder()
-                                                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
-                                                    .setResolutionStrategy(ResolutionStrategy(
-                                                        android.util.Size(1280, 720),
-                                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-                                                    ))
-                                                    .build()
-                                                camera.imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
-                                                controller = camera
-                                                camera.setZoomRatio(savedInstanceState?.getFloat("zoomRatio", 1f) ?: 1f)
-                                                view.controller = camera
                                                 view.previewStreamState.observe(this@MainActivity) {
                                                     cameraReady = it == PreviewView.StreamState.STREAMING
                                                 }
-                                                bindCamera()
+                                                view.doOnLayout { if (preview === view) bindCamera() }
                                             }
                                         },
+                                        onRelease = ::releasePreview,
                                     )
                                     Canvas(Modifier.fillMaxSize()) {
                                         for ((region, color) in listOf(GAME_SCREEN to Color.White, QUESTION_ZONE to Color.Green)) {
@@ -184,8 +171,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                            }
+                            val controlsPane: @Composable (Modifier) -> Unit = { modifier ->
                                 Column(
-                                    Modifier.width(controlsWidth).height(controlsHeight),
+                                    modifier,
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     val scanControls: @Composable () -> Unit = {
@@ -200,7 +189,8 @@ class MainActivity : ComponentActivity() {
                                                 Text(if (scanning) "Scanning…" else if (attempted) "Scan again" else "Scan question")
                                             }
                                             if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                            if (cameraError != null) {
+                                            cameraError?.let {
+                                                Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                                                 Button(onClick = ::bindCamera) { Text("Retry camera") }
                                             }
                                         }
@@ -264,10 +254,24 @@ class MainActivity : ComponentActivity() {
                                                 if (scanning) "Reading question…" else if (attempted) "Ready to try again" else "Find your answer",
                                                 style = MaterialTheme.typography.titleLarge,
                                             )
-                                            Text(dataError ?: cameraError ?: message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            if (cameraError == null || dataError != null) {
+                                                Text(dataError ?: message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
                                         }
                                     }
                                     if (!stacked) scanControls()
+                                }
+                            }
+                            if (stacked) {
+                                val previewHeight = minOf(maxWidth, maxHeight / 2)
+                                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    previewPane(Modifier.fillMaxWidth().height(previewHeight))
+                                    controlsPane(Modifier.fillMaxWidth().weight(1f))
+                                }
+                            } else {
+                                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    previewPane(Modifier.fillMaxHeight().weight(2f))
+                                    controlsPane(Modifier.fillMaxHeight().weight(1f))
                                 }
                             }
                         }
@@ -285,24 +289,67 @@ class MainActivity : ComponentActivity() {
             permitted = false
             return
         }
+        val view = preview ?: return
+        unbindCamera()
         cameraError = null
         try {
-            val camera = controller ?: return
+            val camera = LifecycleCameraController(this)
+            controller = camera
+            camera.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
+            camera.imageAnalysisResolutionSelector = ResolutionSelector.Builder()
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                .setResolutionStrategy(ResolutionStrategy(
+                    android.util.Size(1280, 720),
+                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                ))
+                .build()
+            camera.imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+            camera.setZoomRatio(zoomRatio)
+            view.controller = camera
             camera.bindToLifecycle(this)
             camera.initializationFuture.addListener({
-                if (!isDestroyed) {
+                if (controller === camera && !isDestroyed) {
                     try {
                         camera.initializationFuture.get()
+                        val state = checkNotNull(camera.cameraInfo).cameraState
+                        cameraState = state
+                        state.observe(this) {
+                            if (it.error != null) {
+                                cameraError = CAMERA_UNAVAILABLE
+                                if (scanning) finishScan(requestId, "Camera interrupted the scan. Try again when ready.")
+                            } else if (it.type == CameraState.Type.OPEN) {
+                                cameraError = null
+                            }
+                        }
                     } catch (_: Exception) {
-                        cameraError = "Camera unavailable. Close other camera apps and retry."
-                        cameraReady = false
+                        cameraError = CAMERA_UNAVAILABLE
                     }
                 }
             }, ContextCompat.getMainExecutor(this))
         } catch (_: Exception) {
-            cameraError = "Camera unavailable. Close other camera apps and retry."
-            cameraReady = false
+            cameraError = CAMERA_UNAVAILABLE
         }
+    }
+
+    private fun releasePreview(view: PreviewView) {
+        view.previewStreamState.removeObservers(this)
+        if (preview !== view) return
+        if (scanning) finishScan(requestId, "Scan paused. Tap Scan again when ready.")
+        unbindCamera()
+        preview = null
+    }
+
+    private fun unbindCamera() {
+        cameraState?.removeObservers(this)
+        cameraState = null
+        controller?.let {
+            zoomRatio = it.zoomState.value?.zoomRatio ?: zoomRatio
+            it.clearImageAnalysisAnalyzer()
+            preview?.controller = null
+            it.unbind()
+        }
+        controller = null
+        cameraReady = false
     }
 
     private fun scan() {
@@ -313,7 +360,7 @@ class MainActivity : ComponentActivity() {
         val camera = controller ?: return
         val view = preview ?: return
         val localMatcher = matcher ?: return
-        if (scanning || !cameraReady || view.width == 0 || view.height == 0) return
+        if (scanning || !cameraReady || cameraError != null || view.width == 0 || view.height == 0) return
         scanning = true
         attempted = true
         match = null
@@ -349,7 +396,7 @@ class MainActivity : ComponentActivity() {
                         val found = runCatching { localMatcher.match(selected) }
                         handler.post {
                             found.onSuccess {
-                                finishScan(id, "Keep the full question in the green box.", it)
+                                finishScan(id, "No matching question. Keep the full question in the green box and try again.", it)
                             }.onFailure {
                                 finishScan(id, "Could not read the question. Try scanning again.")
                             }
@@ -391,7 +438,7 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean("attempted", attempted)
         outState.putBoolean("permissionDenied", permissionDenied)
         outState.putString("message", if (scanning) "Scan paused. Tap Scan again when ready." else message)
-        outState.putFloat("zoomRatio", controller?.zoomState?.value?.zoomRatio ?: 1f)
+        outState.putFloat("zoomRatio", controller?.zoomState?.value?.zoomRatio ?: zoomRatio)
         match?.let { result ->
             outState.putString("remark", result.question.remark)
             outState.putString("answer", result.question.answer)
@@ -414,8 +461,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         requestId++
         timeout?.let(handler::removeCallbacks)
-        controller?.clearImageAnalysisAnalyzer()
-        controller?.unbind()
+        preview?.let(::releasePreview)
         recognizer.close()
         worker.shutdown()
         super.onDestroy()

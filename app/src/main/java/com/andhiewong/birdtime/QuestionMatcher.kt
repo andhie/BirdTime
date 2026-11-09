@@ -38,6 +38,7 @@ class QuestionMatcher(questions: List<Question>) {
                 secondScore = score
             }
         }
+        if (bestScore < MIN_MATCH_SCORE) return null
         return bestQuestion?.let {
             Match(
                 question = it,
@@ -69,6 +70,8 @@ class QuestionMatcher(questions: List<Question>) {
 
     companion object {
         const val MIN_USEFUL_TEXT_LENGTH = 20
+        // shortcut: 0.40 is provisional; calibrate it with target-phone captures.
+        private const val MIN_MATCH_SCORE = 0.40
         // Calibration defaults: change only after checking target-phone samples.
         const val STRONG_SCORE_THRESHOLD = 0.62
         const val STRONG_MARGIN_THRESHOLD = 0.08

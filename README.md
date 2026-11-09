@@ -16,7 +16,7 @@ Point your phone at the game’s question, tap to scan, and Bird Time looks up t
 4. Read the suggested answer and compare the question reference with the game screen.
 5. Tap **Scan again** for the next question or to retry an unclear scan.
 
-Weaker matches are labeled **Possible answer** with a comparison warning. The displayed text similarity measures how closely the scanned text matches the stored question; it is not a probability that the answer is correct. If recognition struggles, adjust the angle or lighting and scan again.
+Weaker matches are labeled **Possible answer** with a comparison warning. If no question is close enough, the app asks you to scan again without suggesting an answer. The displayed text similarity measures how closely the scanned text matches the stored question; it is not a probability that the answer is correct. If recognition struggles, adjust the angle or lighting and scan again.
 
 ## Features and privacy
 
@@ -46,7 +46,7 @@ On macOS or Linux:
 ./gradlew assembleDebug
 ```
 
-If needed, run `chmod +x gradlew` first. The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Repository layout
 
@@ -54,5 +54,6 @@ If needed, run `chmod +x gradlew` first. The debug APK is generated at `app/buil
 - `app/src/main/java/com/andhiewong/birdtime/QuestionMatcher.kt` — question models, text normalization, and edit-distance matching.
 - `app/src/main/assets/questions.json` — bundled questions and answers.
 - `app/src/test/java/com/andhiewong/birdtime/` — matching and packaged-data tests.
+- [`artwork/launcher/`](artwork/launcher/) — original launcher background and foreground PNGs kept for regeneration.
 
 The app uses Kotlin, Jetpack Compose Material 3, CameraX, ML Kit, and Kotlin serialization. Edit `questions.json` directly to correct data, preserve UTF-8, and run the unit tests afterward. An intentional change to the record count also requires updating the count checks in `MainActivity.kt` and `QuestionDataTest.kt`.

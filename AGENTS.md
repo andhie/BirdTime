@@ -31,8 +31,6 @@ macOS/Linux (shell):
 ./gradlew assembleDebug # build the debug APK
 ```
 
-If the wrapper is not executable on macOS/Linux, run `chmod +x gradlew` once.
-
 The checked-in configuration uses Gradle 9.6.0, AGP 9.5.1, Kotlin plugins 2.4.21, compile/target SDK 37, and minimum SDK 24. The Gradle daemon criteria request JDK 25; Java source/target compatibility is 17. Keep SDK locations in untracked `local.properties`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 Edit `app/src/main/assets/questions.json` directly and run the unit tests after changing it. Both `MainActivity.kt` and `QuestionDataTest.kt` enforce exactly 496 unique remarks with nonblank remarks and answers; update both checks if an intentional data change alters the count. Preserve UTF-8 data and serialization compatibility.
@@ -43,7 +41,7 @@ Scanning starts only on a button tap, consumes the first OCR result, and clears 
 
 OCR uses view-referenced coordinates and selects text blocks whose centers fall in `QUESTION_ZONE`, ordered top-to-bottom then left-to-right. Keep the drawn guide and selection region aligned; this is block filtering, not image cropping.
 
-Matching applies Unicode NFKC normalization, locale-independent lowercase, and punctuation/whitespace normalization before normalized edit-distance scoring. Inputs shorter than 20 normalized characters are rejected. A strong match requires a score of at least 0.62 and a margin of at least 0.08 over the runner-up. Weak matches remain visible as possible answers with a comparison warning; similarity is not a probability of correctness.
+Matching applies Unicode NFKC normalization, locale-independent lowercase, and punctuation/whitespace normalization before normalized edit-distance scoring. Inputs shorter than 20 normalized characters and matches below 0.40 similarity are rejected. A strong match requires a score of at least 0.62 and a margin of at least 0.08 over the runner-up. Weak matches above the minimum remain visible as possible answers with a comparison warning; similarity is not a probability of correctness.
 
 ## Coding Style & Naming Conventions
 
