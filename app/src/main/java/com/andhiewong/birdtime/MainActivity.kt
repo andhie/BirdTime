@@ -359,6 +359,8 @@ class MainActivity : ComponentActivity() {
                     finishScan(id, "Could not read the question. Try scanning again.")
                 }
             }
+            // CameraX forwards preview transform changes but doesn't replay the current transform.
+            analyzer.updateTransform(view.sensorToViewTransform)
             // Resolution is fixed before binding; analyzer changes must not restart zoom/focus.
             camera.setImageAnalysisAnalyzer(worker, object : ImageAnalysis.Analyzer {
                 override fun analyze(image: ImageProxy) = analyzer.analyze(image)
