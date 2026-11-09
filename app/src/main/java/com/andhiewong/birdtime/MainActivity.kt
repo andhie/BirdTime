@@ -1,12 +1,15 @@
 package com.andhiewong.birdtime
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -36,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -118,23 +123,50 @@ class MainActivity : ComponentActivity() {
                 surface = Color(0xFF101713),
                 surfaceVariant = Color(0xFF26352C),
                 onSurfaceVariant = Color(0xFFC0CEC3),
+                tertiary = Color(0xFFFFD180),
             )) {
                 Surface(Modifier.fillMaxSize()) {
                     if (!permitted) {
                         Column(
-                            Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
+                            Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
                             verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("Bird Time", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(Modifier.height(16.dp))
-                            Text(if (permissionDenied) {
-                                "Camera permission was denied. Allow camera access to scan. If Android no longer asks, enable Camera in the app's system settings and return."
-                            } else {
-                                "Bird Time needs the camera to read a game question. Images and text stay on this phone."
-                            })
-                            Spacer(Modifier.height(16.dp))
-                            Button(onClick = { permissionRequest.launch(Manifest.permission.CAMERA) }) {
-                                Text("Allow camera")
+                            Column(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
+                                Text(
+                                    if (permissionDenied) "Enable camera" else "Point. Scan.\nPerfect Bird Time",
+                                    modifier = Modifier.semantics { heading() },
+                                    style = MaterialTheme.typography.headlineLarge,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    if (permissionDenied) {
+                                        "Allow camera access here or in app settings."
+                                    } else {
+                                        "Find answers with your camera. Everything stays on your phone."
+                                    },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(32.dp))
+                                Button(
+                                    onClick = { permissionRequest.launch(Manifest.permission.CAMERA) },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                ) {
+                                    Text("Allow camera")
+                                }
+                                if (permissionDenied) {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                Uri.parse("package:$packageName")))
+                                        },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                    ) {
+                                        Text("Open app settings")
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -190,7 +222,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                             if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
                                             cameraError?.let {
-                                                Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                                                Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                                                    color = MaterialTheme.colorScheme.error)
                                                 Button(onClick = ::bindCamera) { Text("Retry camera") }
                                             }
                                         }
@@ -206,7 +239,7 @@ class MainActivity : ComponentActivity() {
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         if (result != null) {
-                                            val confidenceColor = if (result.strong) MaterialTheme.colorScheme.primary else Color(0xFFFFD180)
+                                            val confidenceColor = if (result.strong) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
                                             FlowRow(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -214,7 +247,7 @@ class MainActivity : ComponentActivity() {
                                             ) {
                                                 Text(
                                                     if (result.strong) "Answer" else "Possible answer",
-                                                    modifier = Modifier.padding(top = 6.dp, end = 12.dp),
+                                                    modifier = Modifier.padding(top = 6.dp, end = 12.dp).semantics { heading() },
                                                     style = MaterialTheme.typography.labelLarge,
                                                     color = confidenceColor,
                                                 )
@@ -235,7 +268,7 @@ class MainActivity : ComponentActivity() {
                                                 Text(
                                                     "Compare the question below with your screen before using this answer.",
                                                     style = MaterialTheme.typography.bodyMedium,
-                                                    color = Color(0xFFFFD180),
+                                                    color = MaterialTheme.colorScheme.tertiary,
                                                 )
                                             }
                                             HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -252,6 +285,7 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             Text(
                                                 if (scanning) "Reading question…" else if (attempted) "Ready to try again" else "Find your answer",
+                                                modifier = Modifier.semantics { heading() },
                                                 style = MaterialTheme.typography.titleLarge,
                                             )
                                             if (cameraError == null || dataError != null) {
