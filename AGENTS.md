@@ -31,7 +31,7 @@ macOS/Linux (shell):
 ./gradlew assembleDebug # build the debug APK
 ```
 
-The checked-in configuration uses Gradle 9.6.0, AGP 9.5.1, Kotlin plugins 2.4.21, compile/target SDK 37, and minimum SDK 24. The Gradle daemon criteria request JDK 25; Java source/target compatibility is 17. Keep SDK locations in untracked `local.properties`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+The checked-in configuration uses Gradle 9.8.2, AGP 9.5.1, Kotlin plugins 2.4.21, compile/target SDK 37, and minimum SDK 24. The Gradle daemon criteria request JDK 25; Java source/target compatibility is 17. Keep SDK locations in untracked `local.properties`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 Edit `app/src/main/assets/questions.json` directly and run the unit tests after changing it. Both `MainActivity.kt` and `QuestionDataTest.kt` enforce exactly 496 unique remarks with nonblank remarks and answers; update both checks if an intentional data change alters the count. Preserve UTF-8 data and serialization compatibility.
 
